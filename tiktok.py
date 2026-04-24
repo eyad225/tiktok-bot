@@ -44,24 +44,16 @@ def download_video(url):
         return None
 
 
-# /start (ترحيب باسم المستخدم)
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name
-    username = f"@{user.username}" if user.username else ""
-
-    keyboard = [
-        [InlineKeyboardButton("📥 تحميل فيديو", callback_data="download")]
-    ]
 
     await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name} {username}\n\n"
+        f"👋 أهلاً بيك يا {name}\n\n"
         "🎬 بوت تحميل الفيديوهات\n"
         "برعاية ( إياد ) 💙\n\n"
-        "📥 ابعت رابط فيديو من:\n"
-        "TikTok / YouTube / Instagram\n\n"
-        "⚡ بدون علامة مائية وبأعلى جودة\n",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        "📥 ابعت رابط الفيديو وأنا أخليك تختار المنصة 👇"
     )
 
 
@@ -72,47 +64,50 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_links[update.effective_user.id] = url
 
     keyboard = [
-        [InlineKeyboardButton("📥 تحميل الفيديو", callback_data="download")]
+        [
+            InlineKeyboardButton("🎵 TikTok", callback_data="tiktok"),
+            InlineKeyboardButton("▶️ YouTube", callback_data="youtube"),
+        ],
+        [
+            InlineKeyboardButton("📸 Instagram", callback_data="instagram")
+        ],
     ]
 
     await update.message.reply_text(
-        "👇 اضغط لتحميل الفيديو",
+        "اختر المنصة 👇",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
-# الزرار
+# الأزرار
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     user_id = query.from_user.id
+    url = user_links.get(user_id)
 
-    if query.data == "download":
-        url = user_links.get(user_id)
+    if not url:
+        await query.message.reply_text("❌ ابعت الرابط الأول")
+        return
 
-        if not url:
-            await query.message.reply_text("❌ ابعت رابط الأول")
-            return
+    await query.message.reply_text("⏳ جاري التحميل...")
 
-        msg = await query.message.reply_text("⏳ جاري التحميل...")
+    file_path = download_video(url)
 
-        file_path = download_video(url)
+    if file_path and os.path.exists(file_path):
+        try:
+            with open(file_path, "rb") as video:
+                await query.message.reply_video(video)
 
-        if file_path and os.path.exists(file_path):
-            try:
-                with open(file_path, "rb") as video:
-                    await query.message.reply_video(video)
+            os.remove(file_path)
 
-                os.remove(file_path)
-                await msg.delete()
+        except Exception as e:
+            print(e)
+            await query.message.reply_text("❌ خطأ في الإرسال")
 
-            except Exception as e:
-                print(e)
-                await msg.edit_text("❌ حصل خطأ أثناء الإرسال")
-
-        else:
-            await msg.edit_text("❌ فشل التحميل")
+    else:
+        await query.message.reply_text("❌ فشل التحميل")
 
 
 # تشغيل البوت
@@ -126,7 +121,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
     app.add_handler(CallbackQueryHandler(button))
 
-    print("🤖 Bot is running...")
+    print("🤖 Bot running...")
     app.run_polling()
 
 
