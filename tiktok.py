@@ -1,9 +1,7 @@
 import logging
 import os
 import re
-import asyncio
-import time
-from collections import defaultdict
+import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -13,124 +11,124 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-import yt_dlp
 
 TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-# 📊 تخزين المستخدمين
-users = set()
-
-# 🛡️ حماية سبام (كل مستخدم له وقت)
-last_request = defaultdict(float)
+# تخزين روابط المستخدمين
+user_links = {}
 
 # تنظيف الرابط
 def clean_url(url):
-    match = re.search(r"(https://www\.tiktok\.com/@[\w\.-]+/video/\d+)", url)
+    match = re.search(r"(https?://[^\s]+)", url)
     return match.group(1) if match else url
 
-# تحميل الفيديو (محسن)
+
+# تحميل الفيديو
 def download_video(url):
     ydl_opts = {
-        "outtmpl": "video_%(id)s.%(ext)s",
-        "format": "mp4",
+        "outtmpl": "video.%(ext)s",
+        "format": "best[ext=mp4]",
         "quiet": True,
         "noplaylist": True,
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0"
-        }
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        return ydl.prepare_filename(info)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+        return filename
+    except Exception as e:
+        print("ERROR:", e)
+        return None
 
-# 🎨 قائمة احترافية
-def main_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 تحميل فيديو", callback_data="download")],
-        [InlineKeyboardButton("📊 عدد المستخدمين", callback_data="stats")]
-    ])
 
-# /start
+# /start (ترحيب باسم المستخدم)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    users.add(user_id)
+    user = update.effective_user
+    name = user.first_name
+    username = f"@{user.username}" if user.username else ""
+
+    keyboard = [
+        [InlineKeyboardButton("📥 تحميل فيديو", callback_data="download")]
+    ]
 
     await update.message.reply_text(
-        "👋 أهلاً بيك في بوت تحميل الفيديوهات 🎬\n\n"
+        f"👋 أهلاً بيك يا {name} {username}\n\n"
+        "🎬 بوت تحميل الفيديوهات\n"
         "برعاية ( إياد ) 💙\n\n"
-        "📥 تحميل بدون علامة مائية\n"
-        "⚡ سرعة عالية\n\n"
-        "اضغط وابدأ 👇",
-        reply_markup=main_menu()
+        "📥 ابعت رابط فيديو من:\n"
+        "TikTok / YouTube / Instagram\n\n"
+        "⚡ بدون علامة مائية وبأعلى جودة\n",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
-# الأزرار
+
+# استقبال اللينك
+async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = clean_url(update.message.text)
+
+    user_links[update.effective_user.id] = url
+
+    keyboard = [
+        [InlineKeyboardButton("📥 تحميل الفيديو", callback_data="download")]
+    ]
+
+    await update.message.reply_text(
+        "👇 اضغط لتحميل الفيديو",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# الزرار
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    user_id = query.from_user.id
+
     if query.data == "download":
-        await query.message.reply_text("📎 ابعت لينك TikTok")
+        url = user_links.get(user_id)
 
-    elif query.data == "stats":
-        await query.message.reply_text(f"👥 عدد المستخدمين: {len(users)}")
-
-# استقبال اللينك
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text
-
-    # 🛡️ حماية سبام (كل 10 ثواني)
-    if time.time() - last_request[user_id] < 10:
-        await update.message.reply_text("⏳ استنى شوية قبل ما تبعت تاني")
-        return
-
-    last_request[user_id] = time.time()
-
-    if "tiktok.com" not in text:
-        await update.message.reply_text("❌ ابعت لينك TikTok صحيح")
-        return
-
-    msg = await update.message.reply_text("⏳ جاري التحميل...")
-
-    try:
-        url = clean_url(text)
-
-        loop = asyncio.get_running_loop()
-        file = await loop.run_in_executor(None, download_video, url)
-
-        if not os.path.exists(file):
-            await msg.edit_text("❌ فشل التحميل")
+        if not url:
+            await query.message.reply_text("❌ ابعت رابط الأول")
             return
 
-        with open(file, "rb") as video:
-            await update.message.reply_video(video=video)
+        msg = await query.message.reply_text("⏳ جاري التحميل...")
 
-        os.remove(file)
+        file_path = download_video(url)
 
-        await update.message.reply_text(
-            "✅ تم التحميل بنجاح",
-            reply_markup=main_menu()
-        )
+        if file_path and os.path.exists(file_path):
+            try:
+                with open(file_path, "rb") as video:
+                    await query.message.reply_video(video)
 
-        await msg.delete()
+                os.remove(file_path)
+                await msg.delete()
 
-    except Exception as e:
-        print(e)
-        await msg.edit_text("⚠️ حصل خطأ")
+            except Exception as e:
+                print(e)
+                await msg.edit_text("❌ حصل خطأ أثناء الإرسال")
 
+        else:
+            await msg.edit_text("❌ فشل التحميل")
+
+
+# تشغيل البوت
 def main():
+    if not TOKEN:
+        raise ValueError("TOKEN is missing!")
+
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
+    app.add_handler(CallbackQueryHandler(button))
 
-    print("🤖 Bot running...")
+    print("🤖 Bot is running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
