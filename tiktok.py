@@ -3,6 +3,7 @@ import os
 import re
 import requests
 import yt_dlp
+import random
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -28,24 +29,42 @@ def clean_url(url):
     return match.group(1) if match else url
 
 
-# ---------------- TikTok (نظام احترافي) ----------------
+# ---------------- جلب دعاء من الإنترنت ----------------
+def get_duaa():
+    try:
+        url = "https://api.aladhan.com/v1/adhkar"
+        res = requests.get(url, timeout=10).json()
+
+        if res.get("data"):
+            all_duas = []
+
+            for category in res["data"]:
+                for item in res["data"][category]:
+                    all_duas.append(item.get("text"))
+
+            return random.choice(all_duas)
+
+    except:
+        pass
+
+    return "اللهم ارزقنا الخير كله 🤲"
+
+
+# ---------------- TikTok بدون علامة ----------------
 def download_tiktok(url):
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    # API 1
     try:
         api = f"https://tikwm.com/api/?url={url}"
         r = requests.get(api, headers=headers, timeout=10).json()
         if r.get("data") and r["data"].get("play"):
-            video_url = r["data"]["play"]
-            data = requests.get(video_url, headers=headers).content
+            data = requests.get(r["data"]["play"], headers=headers).content
             with open("tiktok.mp4", "wb") as f:
                 f.write(data)
             return "tiktok.mp4"
     except:
         pass
 
-    # API 2
     try:
         api = f"https://api.tiklydown.eu.org/api/download?url={url}"
         r = requests.get(api, headers=headers, timeout=10).json()
@@ -57,7 +76,6 @@ def download_tiktok(url):
     except:
         pass
 
-    # API 3
     try:
         api = f"https://ttdownloader.com/req/?url={url}"
         r = requests.get(api, headers=headers, timeout=10)
@@ -70,7 +88,6 @@ def download_tiktok(url):
     except:
         pass
 
-    # fallback yt-dlp
     try:
         ydl_opts = {
             "format": "best",
@@ -146,20 +163,54 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton("📸 Instagram", callback_data="instagram"),
         ],
+        [
+            InlineKeyboardButton("📿 أدعية", callback_data="duaa"),
+        ],
+        [
+            InlineKeyboardButton("ℹ️ معلومات", callback_data="about"),
+            InlineKeyboardButton("🧑‍💻 المطور", callback_data="dev"),
+        ],
     ]
 
     await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name} \n\n"
+        f"👋 أهلاً بيك يا {name} 🛡\n\n"
         "🎬 بوت تحميل الفيديوهات\n"
         "━━━━━━━━━━━━━━━\n"
         "⚡ يدعم:\n"
         "• TikTok (بدون علامة 🔥)\n"
         "• YouTube\n"
         "• Instagram\n\n"
-        "📌 اختار المنصة 👇\n\n"
+        "📌 اختار من تحت 👇\n\n"
         "💙 برعاية إياد",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
+
+# ---------------- أزرار إضافية ----------------
+async def extra_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "duaa":
+        doa = get_duaa()
+        keyboard = [
+            [InlineKeyboardButton("🔄 دعاء آخر", callback_data="duaa")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="back")]
+        ]
+
+        await query.edit_message_text(
+            f"📿 دعاء:\n\n{doa}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data == "about":
+        await query.edit_message_text("🤖 بوت تحميل فيديوهات احترافي")
+
+    elif query.data == "dev":
+        await query.edit_message_text("🧑‍💻 المطور: إياد 💙")
+
+    elif query.data == "back":
+        return await start(update, context)
 
 
 # ---------------- اختيار المنصة ----------------
@@ -272,6 +323,7 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(extra_buttons, pattern="^(duaa|about|dev|back)$"))
     app.add_handler(CallbackQueryHandler(choose_platform, pattern="^(tiktok|youtube|instagram)$"))
     app.add_handler(CallbackQueryHandler(choose_mode, pattern="^(video|audio|back)$"))
     app.add_handler(CallbackQueryHandler(choose_quality, pattern="^(360|720|1080|back)$"))
