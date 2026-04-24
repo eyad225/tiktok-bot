@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import yt_dlp
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -16,38 +17,27 @@ TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-# تخزين المنصة لكل مستخدم
+# تخزين اختيار المستخدم
 user_platform = {}
 
-# تنظيف الرابط
-def clean_url(url):
-    match = re.search(r"(https?://[^\s]+)", url)
-    return match.group(1) if match else url
-
-
-# تحميل الفيديو
-def download_video(url):
-    ydl_opts = {
-        "outtmpl": "video.%(ext)s",
-        "format": "best[ext=mp4]",
-        "quiet": True,
-        "noplaylist": True,
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-        return filename
-    except Exception as e:
-        print("ERROR:", e)
-        return None
-
-
-# /start
+# ------------------- START -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    name = user.first_name
+    user_name = update.effective_user.first_name
+
+    text = f"""👋 أهلاً بيك يا {user_name} 
+
+🎬 بوت تحميل الفيديوهات
+━━━━━━━━━━━━━━━
+⚡ يدعم:
+
+• TikTok
+• YouTube
+• Instagram
+
+📌 اختار المنصة الأول 👇
+وبعدها ابعت رابط الفيديو
+
+💙 برعاية إياد"""
 
     keyboard = [
         [
@@ -55,85 +45,74 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("▶️ YouTube", callback_data="youtube"),
         ],
         [
-            InlineKeyboardButton("📸 Instagram", callback_data="instagram")
+            InlineKeyboardButton("📸 Instagram", callback_data="instagram"),
         ],
     ]
 
     await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name} 🛡️\n\n"
-        "🎬 بوت تحميل الفيديوهات\n"
-        "━━━━━━━━━━━━━━━\n"
-        "⚡ يدعم:\n"
-        "• TikTok\n"
-        "• YouTube\n"
-        "• Instagram\n\n"
-        "📌 اختار المنصة الأول 👇\n"
-        "وبعدها ابعت رابط الفيديو\n\n"
-        "💙 برعاية إياد",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
-# اختيار المنصة
+# ------------------- BUTTON -------------------
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    user_id = query.from_user.id
-    platform = query.data
+    user_platform[query.from_user.id] = query.data
 
-    user_platform[user_id] = platform
-
-    await query.message.reply_text(
-        f"📥 ابعت رابط الفيديو من {platform.upper()} الآن"
+    await query.edit_message_text(
+        f"✅ اخترت {query.data.upper()}\n\n📎 ابعت رابط الفيديو الآن"
     )
 
+# ------------------- DOWNLOAD -------------------
+def download_video(url):
+    ydl_opts = {
+        "format": "best",
+        "outtmpl": "video.%(ext)s",
+        "quiet": True,
+    }
 
-# استقبال الرابط
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info)
+
+# ------------------- HANDLE -------------------
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    url = update.message.text
 
-    platform = user_platform.get(user_id)
-
-    if not platform:
-        await update.message.reply_text("❌ اختار المنصة الأول")
+    if user_id not in user_platform:
+        await update.message.reply_text("❗ اختار المنصة الأول من /start")
         return
 
-    url = clean_url(update.message.text)
+    # رسالة جاري التحميل
+    loading_msg = await update.message.reply_text("⏳ جاري التحميل...")
 
-    await update.message.reply_text("⏳ جاري التحميل...")
+    try:
+        video_path = download_video(url)
 
-    file_path = download_video(url)
+        # تعديل الرسالة بدل حذفها
+        await loading_msg.edit_text("📤 جاري إرسال الفيديو...")
 
-    if file_path and os.path.exists(file_path):
-        try:
-            with open(file_path, "rb") as video:
-                await update.message.reply_video(video)
+        # إرسال الفيديو
+        await update.message.reply_video(video=open(video_path, "rb"))
 
-            os.remove(file_path)
+        # حذف الملف بعد الإرسال
+        os.remove(video_path)
 
-        except Exception as e:
-            print(e)
-            await update.message.reply_text("❌ خطأ أثناء الإرسال")
+    except Exception as e:
+        await loading_msg.edit_text("❌ حصل خطأ أثناء التحميل")
 
-    else:
-        await update.message.reply_text("❌ فشل التحميل")
-
-
-# تشغيل البوت
+# ------------------- MAIN -------------------
 def main():
-    if not TOKEN:
-        raise ValueError("TOKEN is missing!")
-
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
-    print("🤖 Bot is running...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
