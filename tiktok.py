@@ -29,23 +29,34 @@ def clean_url(url):
     return match.group(1) if match else url
 
 
-# ---------------- جلب دعاء من الإنترنت ----------------
+# ---------------- نظام الأدعية الاحترافي ----------------
+duaa_cache = []
+duaa_index = 0
+
 def get_duaa():
+    global duaa_cache, duaa_index
+
     try:
-        url = "https://api.aladhan.com/v1/adhkar"
-        res = requests.get(url, timeout=10).json()
+        if not duaa_cache:
+            url = "https://api.aladhan.com/v1/adhkar"
+            res = requests.get(url, timeout=10).json()
 
-        if res.get("data"):
-            all_duas = []
+            if res.get("data"):
+                for category in res["data"]:
+                    for item in res["data"][category]:
+                        text = item.get("text")
+                        if text:
+                            duaa_cache.append(text)
 
-            for category in res["data"]:
-                for item in res["data"][category]:
-                    all_duas.append(item.get("text"))
+                random.shuffle(duaa_cache)
 
-            return random.choice(all_duas)
+        if duaa_cache:
+            doa = duaa_cache[duaa_index]
+            duaa_index = (duaa_index + 1) % len(duaa_cache)
+            return doa
 
-    except:
-        pass
+    except Exception as e:
+        print(e)
 
     return "اللهم ارزقنا الخير كله 🤲"
 
@@ -193,6 +204,7 @@ async def extra_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "duaa":
         doa = get_duaa()
+
         keyboard = [
             [InlineKeyboardButton("🔄 دعاء آخر", callback_data="duaa")],
             [InlineKeyboardButton("🔙 رجوع", callback_data="back")]
