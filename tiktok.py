@@ -4,6 +4,7 @@ import re
 import requests
 import yt_dlp
 import random
+import time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -29,15 +30,22 @@ def clean_url(url):
     return match.group(1) if match else url
 
 
-# ---------------- نظام الأدعية الاحترافي ----------------
+# ---------------- نظام الأدعية (تحديث كل ساعة) ----------------
 duaa_cache = []
 duaa_index = 0
+last_update = 0
 
-def fetch_duaa():
-    global duaa_cache
+def fetch_duaa(force=False):
+    global duaa_cache, last_update
+
+    # تحديث كل ساعة
+    if not force and time.time() - last_update < 3600:
+        return
+
+    duaa_cache = []
+    last_update = time.time()
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    # API 1
     try:
         res = requests.get("https://api.aladhan.com/v1/adhkar", headers=headers, timeout=10).json()
         if res.get("data"):
@@ -48,7 +56,6 @@ def fetch_duaa():
     except:
         pass
 
-    # API 2
     try:
         res = requests.get("https://hisnmuslim.com/api/ar/husn_ar.json", headers=headers, timeout=10).json()
         for item in res:
@@ -57,7 +64,6 @@ def fetch_duaa():
     except:
         pass
 
-    # Scraping
     try:
         html = requests.get("https://www.islambook.com/dua", headers=headers, timeout=10).text
         found = re.findall(r"<p>(.*?)</p>", html)
@@ -82,8 +88,7 @@ def fetch_duaa():
 def get_duaa():
     global duaa_cache, duaa_index
 
-    if not duaa_cache:
-        fetch_duaa()
+    fetch_duaa()  # 👈 هنا السر (يتحدث تلقائي)
 
     doa = duaa_cache[duaa_index]
     duaa_index = (duaa_index + 1) % len(duaa_cache)
@@ -91,7 +96,7 @@ def get_duaa():
     return doa + f"\n\n✨ {random.randint(1,99999)}"
 
 
-# ---------------- TikTok ----------------
+# ---------------- TikTok بدون علامة ----------------
 def download_tiktok(url):
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -119,7 +124,7 @@ def download_tiktok(url):
         return None
 
 
-# ---------------- فيديو ----------------
+# ---------------- تحميل فيديو ----------------
 def download_video(url, quality="best"):
     fmt = {
         "360": "best[height<=360]",
@@ -132,7 +137,7 @@ def download_video(url, quality="best"):
         return ydl.prepare_filename(info)
 
 
-# ---------------- صوت ----------------
+# ---------------- تحميل صوت ----------------
 def download_audio(url):
     ydl_opts = {
         "format": "bestaudio",
@@ -162,7 +167,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name} 🛡\n\n💙 برعاية إياد",
+        f"👋 أهلاً بيك يا {name} 🛡\n\n🎬 بوت تحميل الفيديوهات\n⚡ يدعم TikTok - YouTube - Instagram\n\n📿 يوجد قسم أدعية متجدد\n\n💙 برعاية إياد",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -174,21 +179,23 @@ async def extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if q.data == "duaa":
         doa = get_duaa()
-        kb = [[InlineKeyboardButton("🔄 دعاء آخر", callback_data="duaa")],
-              [InlineKeyboardButton("🔙 رجوع", callback_data="back")]]
+        kb = [
+            [InlineKeyboardButton("🔄 دعاء آخر", callback_data="duaa")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="back")]
+        ]
         await q.edit_message_text(f"📿 {doa}", reply_markup=InlineKeyboardMarkup(kb))
 
     elif q.data == "about":
-        await q.edit_message_text("🤖 بوت تحميل احترافي")
+        await q.edit_message_text("🤖 بوت تحميل فيديوهات بدون علامة مائية")
 
     elif q.data == "dev":
-        await q.edit_message_text("🧑‍💻 إياد 💙")
+        await q.edit_message_text("🧑‍💻 المطور: إياد 💙")
 
     elif q.data == "back":
         return await start(update, context)
 
 
-# ---------------- باقي التحكم ----------------
+# ---------------- اختيار المنصة ----------------
 async def choose_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -204,6 +211,7 @@ async def choose_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text("🎯 اختر النوع:", reply_markup=InlineKeyboardMarkup(kb))
 
 
+# ---------------- اختيار النوع ----------------
 async def choose_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -216,11 +224,12 @@ async def choose_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("720", callback_data="720"),
              InlineKeyboardButton("1080", callback_data="1080")]
         ]
-        await q.edit_message_text("🎥 الجودة:", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text("🎥 اختر الجودة:", reply_markup=InlineKeyboardMarkup(kb))
     else:
         await q.edit_message_text("📎 ابعت الرابط")
 
 
+# ---------------- الجودة ----------------
 async def choose_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -229,6 +238,7 @@ async def choose_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text("📎 ابعت الرابط")
 
 
+# ---------------- التعامل مع الرابط ----------------
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     url = clean_url(update.message.text)
@@ -253,8 +263,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         os.remove(file)
 
-    except:
-        await msg.edit_text("❌ حصل خطأ")
+    except Exception as e:
+        print(e)
+        await msg.edit_text("❌ حصل خطأ أثناء التحميل")
 
 
 # ---------------- MAIN ----------------
