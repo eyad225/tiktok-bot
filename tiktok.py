@@ -2,6 +2,8 @@ import logging
 import os
 import re
 import asyncio
+import sys
+sys.modules['imghdr'] = None
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
