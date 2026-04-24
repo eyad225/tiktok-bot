@@ -2,11 +2,11 @@ import logging
 import os
 import re
 import asyncio
-import sys
-sys.modules['imghdr'] = None
+import time
+from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
@@ -19,17 +19,24 @@ TOKEN = "8582326537:AAEIqaGuU24vekRPFqZnHSV9mS6CczJu_xw"
 
 logging.basicConfig(level=logging.INFO)
 
+# 📊 تخزين المستخدمين
+users = set()
+
+# 🛡️ حماية سبام (كل مستخدم له وقت)
+last_request = defaultdict(float)
+
 # تنظيف الرابط
 def clean_url(url):
     match = re.search(r"(https://www\.tiktok\.com/@[\w\.-]+/video/\d+)", url)
     return match.group(1) if match else url
 
-# تحميل الفيديو
+# تحميل الفيديو (محسن)
 def download_video(url):
     ydl_opts = {
         "outtmpl": "video_%(id)s.%(ext)s",
         "format": "mp4",
         "quiet": True,
+        "noplaylist": True,
         "http_headers": {
             "User-Agent": "Mozilla/5.0"
         }
@@ -39,24 +46,28 @@ def download_video(url):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info)
 
-# زرار القائمة
+# 🎨 قائمة احترافية
 def main_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 تحميل فيديو", callback_data="download")]
+        [InlineKeyboardButton("🎬 تحميل فيديو", callback_data="download")],
+        [InlineKeyboardButton("📊 عدد المستخدمين", callback_data="stats")]
     ])
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    users.add(user_id)
+
     await update.message.reply_text(
         "👋 أهلاً بيك في بوت تحميل الفيديوهات 🎬\n\n"
         "برعاية ( إياد ) 💙\n\n"
-        "📥 تقدر تحمّل فيديوهات TikTok بدون علامة مائية\n"
-        "⚡ بسرعة عالية وبجودة ممتازة\n\n"
-        "اضغط على الزرار وابدأ 👇",
+        "📥 تحميل بدون علامة مائية\n"
+        "⚡ سرعة عالية\n\n"
+        "اضغط وابدأ 👇",
         reply_markup=main_menu()
     )
 
-# التعامل مع الأزرار
+# الأزرار
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -64,9 +75,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "download":
         await query.message.reply_text("📎 ابعت لينك TikTok")
 
+    elif query.data == "stats":
+        await query.message.reply_text(f"👥 عدد المستخدمين: {len(users)}")
+
 # استقبال اللينك
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     text = update.message.text
+
+    # 🛡️ حماية سبام (كل 10 ثواني)
+    if time.time() - last_request[user_id] < 10:
+        await update.message.reply_text("⏳ استنى شوية قبل ما تبعت تاني")
+        return
+
+    last_request[user_id] = time.time()
 
     if "tiktok.com" not in text:
         await update.message.reply_text("❌ ابعت لينك TikTok صحيح")
@@ -76,7 +98,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         url = clean_url(text)
-        loop = asyncio.get_event_loop()
+
+        loop = asyncio.get_running_loop()
         file = await loop.run_in_executor(None, download_video, url)
 
         if not os.path.exists(file):
@@ -99,12 +122,15 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(e)
         await msg.edit_text("⚠️ حصل خطأ")
 
-# تشغيل البوت
-app = ApplicationBuilder().token(TOKEN).build()
+def main():
+    app = Application.builder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
-print("🤖 Bot running...")
-app.run_polling()
+    print("🤖 Bot running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
