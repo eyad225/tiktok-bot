@@ -16,8 +16,8 @@ TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-# تخزين روابط المستخدمين
-user_links = {}
+# تخزين المنصة المختارة لكل مستخدم
+user_platform = {}
 
 # تنظيف الرابط
 def clean_url(url):
@@ -49,20 +49,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name
 
-    await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name}\n\n"
-        "🎬 بوت تحميل الفيديوهات\n"
-        "برعاية ( إياد ) 💙\n\n"
-        "📥 ابعت رابط الفيديو وأنا أخليك تختار المنصة 👇"
-    )
-
-
-# استقبال اللينك
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = clean_url(update.message.text)
-
-    user_links[update.effective_user.id] = url
-
     keyboard = [
         [
             InlineKeyboardButton("🎵 TikTok", callback_data="tiktok"),
@@ -74,40 +60,57 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "اختر المنصة 👇",
+        f"👋 أهلاً بيك يا {name}\n\n"
+        "🎬 بوت تحميل الفيديوهات\n\n"
+        "📌 اختار المنصة 👇",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
-# الأزرار
+# لما المستخدم يختار منصة
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     user_id = query.from_user.id
-    url = user_links.get(user_id)
+    platform = query.data
 
-    if not url:
-        await query.message.reply_text("❌ ابعت الرابط الأول")
+    user_platform[user_id] = platform
+
+    await query.message.reply_text(
+        f"📥 ابعت رابط الفيديو من {platform.upper()} الآن"
+    )
+
+
+# استقبال الرابط
+async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    platform = user_platform.get(user_id)
+
+    if not platform:
+        await update.message.reply_text("❌ اختار المنصة الأول")
         return
 
-    await query.message.reply_text("⏳ جاري التحميل...")
+    url = clean_url(update.message.text)
+
+    await update.message.reply_text("⏳ جاري التحميل...")
 
     file_path = download_video(url)
 
     if file_path and os.path.exists(file_path):
         try:
             with open(file_path, "rb") as video:
-                await query.message.reply_video(video)
+                await update.message.reply_video(video)
 
             os.remove(file_path)
 
         except Exception as e:
             print(e)
-            await query.message.reply_text("❌ خطأ في الإرسال")
+            await update.message.reply_text("❌ خطأ أثناء الإرسال")
 
     else:
-        await query.message.reply_text("❌ فشل التحميل")
+        await update.message.reply_text("❌ فشل التحميل")
 
 
 # تشغيل البوت
@@ -118,8 +121,8 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
     app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
     print("🤖 Bot running...")
     app.run_polling()
