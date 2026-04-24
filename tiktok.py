@@ -29,7 +29,6 @@ def clean_url(url):
 
 # ---------------- TikTok بدون علامة ----------------
 def download_tiktok(url):
-    # API 1
     try:
         api1 = f"https://tikwm.com/api/?url={url}"
         r = requests.get(api1, timeout=10).json()
@@ -42,7 +41,6 @@ def download_tiktok(url):
     except:
         pass
 
-    # API 2
     try:
         api2 = f"https://ttdownloader.com/req/?url={url}"
         r = requests.get(api2, timeout=10)
@@ -55,7 +53,6 @@ def download_tiktok(url):
     except:
         pass
 
-    # API 3
     try:
         api3 = f"https://api.tiklydown.eu.org/api/download?url={url}"
         r = requests.get(api3, timeout=10).json()
@@ -74,7 +71,7 @@ def download_tiktok(url):
 def download_video(url):
     ydl_opts = {
         "format": "best",
-        "outtmpl": "video.%(ext)s",
+        "outtmpl": "%(title)s.%(ext)s",
         "quiet": True,
         "noplaylist": True,
     }
@@ -87,11 +84,11 @@ def download_video(url):
         return None
 
 
-# ---------------- صوت ----------------
+# ---------------- صوت (باسم الفيديو) ----------------
 def download_audio(url):
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": "audio.%(ext)s",
+        "outtmpl": "%(title)s.%(ext)s",
         "quiet": True,
         "noplaylist": True,
         "postprocessors": [{
@@ -103,9 +100,15 @@ def download_audio(url):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
-        return "audio.mp3"
-    except:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+
+            # تحويل الامتداد لـ mp3
+            filename = os.path.splitext(filename)[0] + ".mp3"
+
+        return filename
+    except Exception as e:
+        print(e)
         return None
 
 
