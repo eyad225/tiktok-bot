@@ -167,7 +167,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name} 🛡\n\n🎬 بوت تحميل الفيديوهات\n⚡ يدعم TikTok - YouTube - Instagram\n\n📿 يوجد قسم أدعية متجدد\n\n💙 برعاية إياد",
+        f"👋 أهلاً بيك يا {name} \n\n🎬 بوت تحميل الفيديوهات\n⚡ يدعم TikTok - YouTube - Instagram\n\n📿 يوجد قسم أدعية متجدد\n\n💙 برعاية إياد",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
