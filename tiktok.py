@@ -16,7 +16,7 @@ TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-# تخزين المنصة المختارة لكل مستخدم
+# تخزين المنصة لكل مستخدم
 user_platform = {}
 
 # تنظيف الرابط
@@ -60,14 +60,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        f"👋 أهلاً بيك يا {name}\n\n"
-        "🎬 بوت تحميل الفيديوهات\n\n"
-        "📌 اختار المنصة 👇",
+        f"👋 أهلاً بيك يا {name} 🛡️\n\n"
+        "🎬 بوت تحميل الفيديوهات\n"
+        "━━━━━━━━━━━━━━━\n"
+        "⚡ يدعم:\n"
+        "• TikTok\n"
+        "• YouTube\n"
+        "• Instagram\n\n"
+        "📌 اختار المنصة الأول 👇\n"
+        "وبعدها ابعت رابط الفيديو\n\n"
+        "💙 برعاية إياد",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
-# لما المستخدم يختار منصة
+# اختيار المنصة
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -124,7 +131,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
-    print("🤖 Bot running...")
+    print("🤖 Bot is running...")
     app.run_polling()
 
 
