@@ -15,7 +15,7 @@ from telegram.ext import (
 )
 import yt_dlp
 
-TOKEN = "PUT_YOUR_TOKEN_HERE"
+TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
