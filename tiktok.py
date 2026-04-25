@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import requests
-import yt_dlp
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -19,7 +18,6 @@ TOKEN = os.getenv("TOKEN")
 logging.basicConfig(level=logging.INFO)
 
 users = set()
-user_platform = {}
 user_mode = {}
 
 # -------- تنظيف الرابط --------
@@ -28,58 +26,56 @@ def clean_url(url):
     return match.group(1) if match else url
 
 
-# -------- TikTok بدون علامة --------
+# -------- TikTok بدون علامة (3 APIs) --------
 def download_tiktok(url):
+
+    # -------- 1. TikWM --------
     try:
         api = f"https://www.tikwm.com/api/?url={url}"
-        r = requests.get(api).json()
+        r = requests.get(api, timeout=10).json()
 
         video_url = r["data"]["play"]
-        video = requests.get(video_url).content
+        video = requests.get(video_url, timeout=10).content
 
-        file_name = "tiktok.mp4"
-        with open(file_name, "wb") as f:
+        with open("tiktok.mp4", "wb") as f:
             f.write(video)
 
-        return file_name
+        return "tiktok.mp4"
     except:
-        return None
+        pass
 
+    # -------- 2. SnapTik --------
+    try:
+        api = f"https://snaptik.app/abc2.php?url={url}"
+        r = requests.get(api, timeout=10).text
 
-# -------- yt-dlp تحميل (محسن) --------
-def download_ytdlp(url, audio=False):
+        video_url = re.search(r'href="(https://[^"]+mp4)"', r)
+        if video_url:
+            video = requests.get(video_url.group(1), timeout=10).content
 
-    # تحويل روابط youtu.be
-    if "youtu.be" in url:
-        url = url.replace("youtu.be/", "youtube.com/watch?v=")
+            with open("tiktok.mp4", "wb") as f:
+                f.write(video)
 
-    ydl_opts = {
-        "outtmpl": "%(title)s.%(ext)s",
-        "quiet": True,
-        "noplaylist": True,
-    }
+            return "tiktok.mp4"
+    except:
+        pass
 
-    if not audio:
-        ydl_opts["format"] = "bestvideo+bestaudio/best"
-        ydl_opts["merge_output_format"] = "mp4"
-    else:
-        ydl_opts["format"] = "bestaudio"
-        ydl_opts["postprocessors"] = [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-        }]
+    # -------- 3. TikMate --------
+    try:
+        api = f"https://api.tikmate.app/api/lookup?url={url}"
+        r = requests.get(api, timeout=10).json()
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        file = ydl.prepare_filename(info)
+        video_url = f"https://tikmate.app/download/{r['token']}/{r['id']}.mp4"
+        video = requests.get(video_url, timeout=10).content
 
-        if not audio:
-            if not file.endswith(".mp4"):
-                file = file.rsplit(".", 1)[0] + ".mp4"
-        else:
-            file = file.rsplit(".", 1)[0] + ".mp3"
+        with open("tiktok.mp4", "wb") as f:
+            f.write(video)
 
-        return file
+        return "tiktok.mp4"
+    except:
+        pass
+
+    return None
 
 
 # -------- START --------
@@ -88,25 +84,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_user.id)
 
     text = f"""
-👋 أهلاً بيك يا {name} 🛡
+👋 أهلاً بيك يا {name} 
 
-🎬 بوت تحميل الفيديوهات
+🎬 بوت تحميل TikTok
 ━━━━━━━━━━━━━━━
 
-⚡ يدعم:
-• TikTok بدون علامة  
-• YouTube فيديو + صوت  
-• Instagram  
+⚡ المميزات:
+• تحميل بدون علامة مائية 🔥  
+• نظام قوي (3 مصادر)  
+• سرعة عالية  
 
 ━━━━━━━━━━━━━━━
 💙 برعاية إياد
 """
 
     keyboard = [
-        [InlineKeyboardButton("🎵 TikTok", callback_data="tiktok"),
-         InlineKeyboardButton("▶️ YouTube", callback_data="youtube")],
-        [InlineKeyboardButton("📸 Instagram", callback_data="instagram")],
-        [InlineKeyboardButton("🎧 تحميل صوت", callback_data="audio")],
+        [InlineKeyboardButton("🎬 فيديو", callback_data="video"),
+         InlineKeyboardButton("🎧 صوت", callback_data="audio")],
         [InlineKeyboardButton("📊 Stats", callback_data="stats")]
     ]
 
@@ -120,24 +114,13 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = q.from_user.id
 
-    if q.data in ["tiktok", "youtube", "instagram"]:
-        user_platform[user_id] = q.data
-
-        keyboard = [
-            [InlineKeyboardButton("🎬 فيديو", callback_data="video"),
-             InlineKeyboardButton("🎧 صوت", callback_data="audio_mode")]
-        ]
-
-        await q.edit_message_text("🎯 اختر النوع:")
-        await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif q.data == "video":
+    if q.data == "video":
         user_mode[user_id] = "video"
-        await q.edit_message_text("📎 ابعت الرابط")
+        await q.edit_message_text("📎 ابعت رابط TikTok")
 
-    elif q.data == "audio_mode":
+    elif q.data == "audio":
         user_mode[user_id] = "audio"
-        await q.edit_message_text("📎 ابعت الرابط")
+        await q.edit_message_text("📎 ابعت رابط TikTok")
 
     elif q.data == "stats":
         await q.edit_message_text(f"👥 المستخدمين: {len(users)}")
@@ -151,13 +134,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("⏳ جاري التحميل...")
 
     try:
-        # TikTok
-        if user_platform.get(user_id) == "tiktok":
-            file = download_tiktok(url)
-
-        # باقي المنصات
-        else:
-            file = download_ytdlp(url, audio=(user_mode.get(user_id) == "audio"))
+        file = download_tiktok(url)
 
         if not file:
             raise Exception("Download failed")
@@ -165,7 +142,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text("📤 جاري الإرسال...")
 
         with open(file, "rb") as f:
-            if file.endswith(".mp3"):
+            if user_mode.get(user_id) == "audio":
                 await update.message.reply_audio(f)
             else:
                 await update.message.reply_video(f)
