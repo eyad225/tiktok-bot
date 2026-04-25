@@ -255,7 +255,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await msg.edit_text("✅ تم التحميل بنجاح")
 
-        await update.message.reply_text("اختار تاني 👇", reply_markup=main_menu())
+        # 👇 الرسالة الجديدة
+        await update.message.reply_text(
+            "👇 اختار تاني لو عاوز تحمل غيرو",
+            reply_markup=main_menu()
+        )
 
     except:
         await msg.edit_text("❌ حصل خطأ أثناء التحميل")
