@@ -43,6 +43,12 @@ def save_users():
 users = load_users()
 
 
+# -------- تنظيف الاسم --------
+def sanitize_filename(name):
+    name = re.sub(r'[\\/*?:"<>|]', "", name)
+    return name[:80]  # تقليل الطول
+
+
 # -------- تنظيف الرابط --------
 def clean_url(url):
     match = re.search(r"(https?://[^\s]+)", url)
@@ -57,30 +63,41 @@ def download_tiktok(url):
 
     apis = []
 
-    apis.append(lambda: requests.get(
-        f"https://www.tikwm.com/api/?url={url}", timeout=10
-    ).json()["data"]["play"])
+    # API 1 (أفضل)
+    def api1():
+        r = requests.get(f"https://www.tikwm.com/api/?url={url}", timeout=10).json()
+        video_url = r["data"]["play"]
+        title = r["data"].get("title", "tiktok_video")
+        return video_url, title
 
-    apis.append(lambda: re.search(
-        r'href="(https://[^"]+mp4)"',
-        requests.get(f"https://snaptik.app/abc2.php?url={url}", timeout=10).text
-    ).group(1))
+    apis.append(api1)
 
-    def tikmate():
-        r = requests.get(
-            f"https://api.tikmate.app/api/lookup?url={url}", timeout=10
-        ).json()
-        return f"https://tikmate.app/download/{r['token']}/{r['id']}.mp4"
+    # API 2
+    def api2():
+        html = requests.get(f"https://snaptik.app/abc2.php?url={url}", timeout=10).text
+        video_url = re.search(r'href="(https://[^"]+mp4)"', html).group(1)
+        return video_url, "tiktok_video"
 
-    apis.append(tikmate)
+    apis.append(api2)
+
+    # API 3
+    def api3():
+        r = requests.get(f"https://api.tikmate.app/api/lookup?url={url}", timeout=10).json()
+        video_url = f"https://tikmate.app/download/{r['token']}/{r['id']}.mp4"
+        return video_url, "tiktok_video"
+
+    apis.append(api3)
 
     for _ in range(2):
         for api in apis:
             try:
-                video_url = api()
+                video_url, title = api()
+
+                title = sanitize_filename(title)
+                file_name = f"{title}.mp4"
+
                 video = requests.get(video_url, timeout=10).content
 
-                file_name = f"{hash(url)}.mp4"
                 with open(file_name, "wb") as f:
                     f.write(video)
 
@@ -132,7 +149,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ⚡ المميزات:
 • بدون علامة مائية 🔥  
-• الصوت بنفس اسم الفيديو 🎧  
+• اسم الفيديو الحقيقي 📂  
+• الصوت بنفس الاسم 🎧  
 • سرعة عالية  
 
 ━━━━━━━━━━━━━━━
