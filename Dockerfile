@@ -1,12 +1,6 @@
-FROM python:3.10
-
-# تثبيت ffmpeg
+FROM python:3.11
 RUN apt update && apt install -y ffmpeg
-
 WORKDIR /app
-
 COPY . .
-
 RUN pip install -r requirements.txt
-
 CMD ["python", "tiktok.py"]
