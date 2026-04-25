@@ -114,7 +114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_users()
 
     text = f"""
-👋 أهلاً بيك يا {name} 🛡
+👋 أهلاً بيك يا {name} 
 
 🎬 بوت تحميل TikTok
 ━━━━━━━━━━━━━━━
