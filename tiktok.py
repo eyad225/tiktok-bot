@@ -29,7 +29,7 @@ cache = {}
 downloads_count = 0
 
 
-# -------- تحميل المستخدمين --------
+# -------- المستخدمين --------
 def load_users():
     if os.path.exists("users.json"):
         with open("users.json") as f:
@@ -93,15 +93,21 @@ def download_tiktok(url):
     return None
 
 
-# -------- تحويل إلى MP3 بنفس الاسم --------
+# -------- تحويل الصوت --------
 def convert_to_mp3(video_file):
     audio_file = video_file.replace(".mp4", ".mp3")
 
-    subprocess.run([
-        "ffmpeg", "-i", video_file,
-        "-vn", "-ab", "192k",
+    result = subprocess.run([
+        "ffmpeg", "-y",
+        "-i", video_file,
+        "-vn",
+        "-acodec", "libmp3lame",
+        "-ab", "192k",
         audio_file
-    ])
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    if not os.path.exists(audio_file):
+        raise Exception("ffmpeg failed")
 
     return audio_file
 
@@ -179,7 +185,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """)
 
 
-# -------- استقبال الرابط --------
+# -------- HANDLE --------
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global downloads_count
 
@@ -192,20 +198,23 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_file = download_tiktok(url)
 
         if not video_file:
-            raise Exception("fail")
+            raise Exception("Download failed")
 
         downloads_count += 1
 
-        await msg.edit_text("📤 جاري المعالجة...")
-
-        # لو صوت
         if user_mode.get(user_id) == "audio":
+
+            await msg.edit_text("🎧 جاري استخراج الصوت...")
+
             audio_file = convert_to_mp3(video_file)
 
             await msg.edit_text("📤 جاري إرسال الصوت...")
 
             with open(audio_file, "rb") as f:
-                await update.message.reply_audio(f)
+                await update.message.reply_audio(
+                    audio=f,
+                    title=os.path.basename(audio_file)
+                )
 
             os.remove(audio_file)
 
@@ -224,7 +233,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text("❌ حصل خطأ أثناء التحميل")
 
 
-# -------- أوامر البوت --------
+# -------- COMMANDS --------
 async def set_commands(app):
     commands = [
         BotCommand("start", "تشغيل البوت"),
