@@ -29,7 +29,7 @@ cache = {}
 downloads_count = 0
 
 
-# -------- المستخدمين --------
+# -------- تحميل المستخدمين --------
 def load_users():
     if os.path.exists("users.json"):
         with open("users.json") as f:
@@ -43,10 +43,37 @@ def save_users():
 users = load_users()
 
 
+# -------- API Stats --------
+api_stats = {
+    "api1": {"success": 0, "fail": 0},
+    "api2": {"success": 0, "fail": 0},
+    "api3": {"success": 0, "fail": 0},
+}
+
+def load_api_stats():
+    global api_stats
+    if os.path.exists("api_stats.json"):
+        with open("api_stats.json") as f:
+            api_stats = json.load(f)
+
+def save_api_stats():
+    with open("api_stats.json", "w") as f:
+        json.dump(api_stats, f)
+
+load_api_stats()
+
+
+# -------- ترتيب APIs --------
+def get_sorted_apis(apis):
+    def score(name):
+        return api_stats[name]["success"] - api_stats[name]["fail"]
+    return sorted(apis, key=lambda x: score(x[0]), reverse=True)
+
+
 # -------- تنظيف الاسم --------
 def sanitize_filename(name):
     name = re.sub(r'[\\/*?:"<>|]', "", name)
-    return name[:80]  # تقليل الطول
+    return name[:80]
 
 
 # -------- تنظيف الرابط --------
@@ -61,35 +88,30 @@ def download_tiktok(url):
     if url in cache and os.path.exists(cache[url]):
         return cache[url]
 
-    apis = []
-
-    # API 1 (أفضل)
     def api1():
         r = requests.get(f"https://www.tikwm.com/api/?url={url}", timeout=10).json()
-        video_url = r["data"]["play"]
-        title = r["data"].get("title", "tiktok_video")
-        return video_url, title
+        return r["data"]["play"], r["data"].get("title", "tiktok_video")
 
-    apis.append(api1)
-
-    # API 2
     def api2():
         html = requests.get(f"https://snaptik.app/abc2.php?url={url}", timeout=10).text
         video_url = re.search(r'href="(https://[^"]+mp4)"', html).group(1)
         return video_url, "tiktok_video"
 
-    apis.append(api2)
-
-    # API 3
     def api3():
         r = requests.get(f"https://api.tikmate.app/api/lookup?url={url}", timeout=10).json()
         video_url = f"https://tikmate.app/download/{r['token']}/{r['id']}.mp4"
         return video_url, "tiktok_video"
 
-    apis.append(api3)
+    apis = [
+        ("api1", api1),
+        ("api2", api2),
+        ("api3", api3),
+    ]
+
+    sorted_apis = get_sorted_apis(apis)
 
     for _ in range(2):
-        for api in apis:
+        for name, api in sorted_apis:
             try:
                 video_url, title = api()
 
@@ -102,9 +124,15 @@ def download_tiktok(url):
                     f.write(video)
 
                 cache[url] = file_name
+
+                api_stats[name]["success"] += 1
+                save_api_stats()
+
                 return file_name
 
             except:
+                api_stats[name]["fail"] += 1
+                save_api_stats()
                 continue
 
     return None
@@ -115,7 +143,7 @@ def convert_to_mp3(video_file):
     audio_file = video_file.replace(".mp4", ".mp3")
 
     try:
-        result = subprocess.run([
+        subprocess.run([
             "ffmpeg", "-y",
             "-i", video_file,
             "-vn",
@@ -125,12 +153,11 @@ def convert_to_mp3(video_file):
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if not os.path.exists(audio_file):
-            raise Exception(result.stderr.decode())
+            raise Exception("ffmpeg failed")
 
         return audio_file
 
-    except Exception as e:
-        print("FFMPEG ERROR:", e)
+    except:
         return None
 
 
@@ -142,18 +169,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_users()
 
     text = f"""
-👋 أهلاً بيك يا {name} 
+👋 أهلاً بيك يا {name}
 
 🎬 بوت تحميل TikTok
-━━━━━━━━━━━━━━━
 
-⚡ المميزات:
 • بدون علامة مائية 🔥  
 • اسم الفيديو الحقيقي 📂  
-• الصوت بنفس الاسم 🎧  
-• سرعة عالية  
+• صوت بنفس الاسم 🎧  
+• ذكاء اختيار السيرفر 🧠  
 
-━━━━━━━━━━━━━━━
 💙 برعاية إياد
 """
 
@@ -169,40 +193,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -------- CANCEL --------
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_mode.pop(update.effective_user.id, None)
-    await update.message.reply_text("❌ تم إلغاء العملية")
+    await update.message.reply_text("❌ تم الإلغاء")
 
 
 # -------- STATS --------
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"""
-📊 إحصائيات البوت:
+📊 إحصائيات:
 
 👥 المستخدمين: {len(users)}
 📥 التحميلات: {downloads_count}
-
-💙 برعاية إياد
 """)
 
 
-# -------- الأزرار --------
+# -------- BUTTONS --------
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
-    user_id = q.from_user.id
-
     if q.data == "video":
-        user_mode[user_id] = "video"
+        user_mode[q.from_user.id] = "video"
         await q.edit_message_text("📎 ابعت رابط TikTok")
 
     elif q.data == "audio":
-        user_mode[user_id] = "audio"
+        user_mode[q.from_user.id] = "audio"
         await q.edit_message_text("📎 ابعت رابط TikTok")
 
     elif q.data == "stats":
         await q.edit_message_text(f"""
-📊 إحصائيات البوت:
-
 👥 المستخدمين: {len(users)}
 📥 التحميلات: {downloads_count}
 """)
@@ -221,18 +239,17 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_file = download_tiktok(url)
 
         if not video_file:
-            raise Exception("Download failed")
+            raise Exception("fail")
 
         downloads_count += 1
 
         if user_mode.get(user_id) == "audio":
-
             await msg.edit_text("🎧 جاري استخراج الصوت...")
 
             audio_file = convert_to_mp3(video_file)
 
             if not audio_file:
-                await msg.edit_text("❌ مشكلة في استخراج الصوت (ffmpeg)")
+                await msg.edit_text("❌ مشكلة في الصوت (ffmpeg)")
                 return
 
             await msg.edit_text("📤 جاري إرسال الصوت...")
@@ -253,21 +270,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         os.remove(video_file)
 
-        await msg.edit_text("✅ تم التحميل بنجاح 🎉")
+        await msg.edit_text("✅ تم التحميل بنجاح")
 
     except Exception as e:
         print(e)
-        await msg.edit_text("❌ حصل خطأ أثناء التحميل")
+        await msg.edit_text("❌ فشل التحميل")
 
 
 # -------- COMMANDS --------
 async def set_commands(app):
-    commands = [
-        BotCommand("start", "تشغيل البوت"),
-        BotCommand("cancel", "إلغاء العملية"),
-        BotCommand("stats", "إحصائيات البوت"),
-    ]
-    await app.bot.set_my_commands(commands)
+    await app.bot.set_my_commands([
+        BotCommand("start", "تشغيل"),
+        BotCommand("cancel", "إلغاء"),
+        BotCommand("stats", "إحصائيات"),
+    ])
 
 
 # -------- MAIN --------
