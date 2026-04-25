@@ -29,7 +29,7 @@ cache = {}
 downloads_count = 0
 
 
-# -------- users --------
+# -------- USERS --------
 def load_users():
     if os.path.exists("users.json"):
         with open("users.json") as f:
@@ -43,7 +43,7 @@ def save_users():
 users = load_users()
 
 
-# -------- API Stats --------
+# -------- API STATS --------
 api_stats = {
     "api1": {"success": 0, "fail": 0},
     "api2": {"success": 0, "fail": 0},
@@ -63,7 +63,7 @@ def save_api_stats():
 load_api_stats()
 
 
-# -------- keyboards --------
+# -------- KEYBOARD --------
 def main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎬 فيديو", callback_data="video"),
@@ -72,10 +72,7 @@ def main_menu():
     ])
 
 
-# -------- helpers --------
-def get_sorted_apis(apis):
-    return sorted(apis, key=lambda x: api_stats[x[0]]["success"] - api_stats[x[0]]["fail"], reverse=True)
-
+# -------- HELPERS --------
 def sanitize_filename(name):
     name = re.sub(r'[\\/*?:"<>|]', "", name)
     return name[:80]
@@ -84,8 +81,15 @@ def clean_url(url):
     match = re.search(r"(https?://[^\s]+)", url)
     return match.group(1) if match else url
 
+def get_sorted_apis(apis):
+    return sorted(
+        apis,
+        key=lambda x: api_stats[x[0]]["success"] - api_stats[x[0]]["fail"],
+        reverse=True
+    )
 
-# -------- download --------
+
+# -------- DOWNLOAD --------
 def download_tiktok(url):
 
     if url in cache and os.path.exists(cache[url]):
@@ -135,7 +139,7 @@ def download_tiktok(url):
     return None
 
 
-# -------- convert --------
+# -------- AUDIO --------
 def convert_to_mp3(video_file):
     audio_file = video_file.replace(".mp4", ".mp3")
 
@@ -160,13 +164,27 @@ def convert_to_mp3(video_file):
 
 # -------- START --------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.effective_user.first_name
+
     users.add(update.effective_user.id)
     save_users()
 
-    await update.message.reply_text(
-        "👋 أهلاً بيك\nاختار نوع التحميل 👇",
-        reply_markup=main_menu()
-    )
+    text = f"""
+👋 أهلاً بيك يا {name} 
+
+🎬 بوت تحميل TikTok
+━━━━━━━━━━━━━━━
+
+🔥 بدون علامة مائية  
+📂 اسم الفيديو الحقيقي  
+🎧 الصوت بنفس الاسم  
+🧠 ذكاء اختيار السيرفر  
+
+━━━━━━━━━━━━━━━
+💙 برعاية إياد
+"""
+
+    await update.message.reply_text(text, reply_markup=main_menu())
 
 
 # -------- BUTTONS --------
@@ -186,7 +204,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif q.data == "stats":
         await q.message.reply_text(
-            f"👥 المستخدمين: {len(users)}\n📥 التحميلات: {downloads_count}",
+            f"📊 الإحصائيات\n\n👥 المستخدمين: {len(users)}\n📥 التحميلات: {downloads_count}",
             reply_markup=main_menu()
         )
 
@@ -217,7 +235,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.edit_text("❌ مشكلة في الصوت")
                 return
 
-            await msg.edit_text("📤 إرسال الصوت...")
+            await msg.edit_text("📤 جاري إرسال الصوت...")
 
             with open(audio_file, "rb") as f:
                 await update.message.reply_audio(
@@ -228,7 +246,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(audio_file)
 
         else:
-            await msg.edit_text("📤 إرسال الفيديو...")
+            await msg.edit_text("📤 جاري إرسال الفيديو...")
 
             with open(video_file, "rb") as f:
                 await update.message.reply_video(f)
@@ -237,17 +255,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await msg.edit_text("✅ تم التحميل بنجاح")
 
-        # 👇 رجوع المنيو
         await update.message.reply_text("اختار تاني 👇", reply_markup=main_menu())
 
     except:
-        await msg.edit_text("❌ فشل التحميل")
+        await msg.edit_text("❌ حصل خطأ أثناء التحميل")
 
 
 # -------- COMMANDS --------
 async def set_commands(app):
     await app.bot.set_my_commands([
-        BotCommand("start", "تشغيل"),
+        BotCommand("start", "تشغيل البوت"),
         BotCommand("stats", "إحصائيات"),
     ])
 
