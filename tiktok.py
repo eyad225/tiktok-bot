@@ -97,19 +97,24 @@ def download_tiktok(url):
 def convert_to_mp3(video_file):
     audio_file = video_file.replace(".mp4", ".mp3")
 
-    result = subprocess.run([
-        "ffmpeg", "-y",
-        "-i", video_file,
-        "-vn",
-        "-acodec", "libmp3lame",
-        "-ab", "192k",
-        audio_file
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        result = subprocess.run([
+            "ffmpeg", "-y",
+            "-i", video_file,
+            "-vn",
+            "-acodec", "libmp3lame",
+            "-ab", "192k",
+            audio_file
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    if not os.path.exists(audio_file):
-        raise Exception("ffmpeg failed")
+        if not os.path.exists(audio_file):
+            raise Exception(result.stderr.decode())
 
-    return audio_file
+        return audio_file
+
+    except Exception as e:
+        print("FFMPEG ERROR:", e)
+        return None
 
 
 # -------- START --------
@@ -207,6 +212,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text("🎧 جاري استخراج الصوت...")
 
             audio_file = convert_to_mp3(video_file)
+
+            if not audio_file:
+                await msg.edit_text("❌ مشكلة في استخراج الصوت (ffmpeg)")
+                return
 
             await msg.edit_text("📤 جاري إرسال الصوت...")
 
