@@ -28,7 +28,7 @@ def clean_url(url):
     return match.group(1) if match else url
 
 
-# -------- TikTok بدون علامة (محسن) --------
+# -------- TikTok بدون علامة --------
 def download_tiktok(url):
     try:
         api = f"https://www.tikwm.com/api/?url={url}"
@@ -46,30 +46,40 @@ def download_tiktok(url):
         return None
 
 
-# -------- yt-dlp تحميل --------
+# -------- yt-dlp تحميل (محسن) --------
 def download_ytdlp(url, audio=False):
+
+    # تحويل روابط youtu.be
+    if "youtu.be" in url:
+        url = url.replace("youtu.be/", "youtube.com/watch?v=")
+
     ydl_opts = {
-        "format": "best",
         "outtmpl": "%(title)s.%(ext)s",
         "quiet": True,
         "noplaylist": True,
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0"
-        }
     }
 
-    if audio:
-        ydl_opts.update({
-            "format": "bestaudio",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-            }]
-        })
+    if not audio:
+        ydl_opts["format"] = "bestvideo+bestaudio/best"
+        ydl_opts["merge_output_format"] = "mp4"
+    else:
+        ydl_opts["format"] = "bestaudio"
+        ydl_opts["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+        }]
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        return ydl.prepare_filename(info)
+        file = ydl.prepare_filename(info)
+
+        if not audio:
+            if not file.endswith(".mp4"):
+                file = file.rsplit(".", 1)[0] + ".mp4"
+        else:
+            file = file.rsplit(".", 1)[0] + ".mp3"
+
+        return file
 
 
 # -------- START --------
@@ -78,7 +88,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_user.id)
 
     text = f"""
-👋 أهلاً بيك يا {name} 
+👋 أهلاً بيك يا {name} 🛡
 
 🎬 بوت تحميل الفيديوهات
 ━━━━━━━━━━━━━━━
