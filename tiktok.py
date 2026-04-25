@@ -29,7 +29,7 @@ cache = {}
 downloads_count = 0
 
 
-# -------- تحميل المستخدمين --------
+# -------- users --------
 def load_users():
     if os.path.exists("users.json"):
         with open("users.json") as f:
@@ -63,26 +63,29 @@ def save_api_stats():
 load_api_stats()
 
 
-# -------- ترتيب APIs --------
+# -------- keyboards --------
+def main_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎬 فيديو", callback_data="video"),
+         InlineKeyboardButton("🎧 صوت", callback_data="audio")],
+        [InlineKeyboardButton("📊 Stats", callback_data="stats")]
+    ])
+
+
+# -------- helpers --------
 def get_sorted_apis(apis):
-    def score(name):
-        return api_stats[name]["success"] - api_stats[name]["fail"]
-    return sorted(apis, key=lambda x: score(x[0]), reverse=True)
+    return sorted(apis, key=lambda x: api_stats[x[0]]["success"] - api_stats[x[0]]["fail"], reverse=True)
 
-
-# -------- تنظيف الاسم --------
 def sanitize_filename(name):
     name = re.sub(r'[\\/*?:"<>|]', "", name)
     return name[:80]
 
-
-# -------- تنظيف الرابط --------
 def clean_url(url):
     match = re.search(r"(https?://[^\s]+)", url)
     return match.group(1) if match else url
 
 
-# -------- تحميل TikTok --------
+# -------- download --------
 def download_tiktok(url):
 
     if url in cache and os.path.exists(cache[url]):
@@ -102,12 +105,7 @@ def download_tiktok(url):
         video_url = f"https://tikmate.app/download/{r['token']}/{r['id']}.mp4"
         return video_url, "tiktok_video"
 
-    apis = [
-        ("api1", api1),
-        ("api2", api2),
-        ("api3", api3),
-    ]
-
+    apis = [("api1", api1), ("api2", api2), ("api3", api3)]
     sorted_apis = get_sorted_apis(apis)
 
     for _ in range(2):
@@ -133,12 +131,11 @@ def download_tiktok(url):
             except:
                 api_stats[name]["fail"] += 1
                 save_api_stats()
-                continue
 
     return None
 
 
-# -------- تحويل الصوت --------
+# -------- convert --------
 def convert_to_mp3(video_file):
     audio_file = video_file.replace(".mp4", ".mp3")
 
@@ -153,7 +150,7 @@ def convert_to_mp3(video_file):
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if not os.path.exists(audio_file):
-            raise Exception("ffmpeg failed")
+            raise Exception()
 
         return audio_file
 
@@ -163,47 +160,13 @@ def convert_to_mp3(video_file):
 
 # -------- START --------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.effective_user.first_name
-
     users.add(update.effective_user.id)
     save_users()
 
-    text = f"""
-👋 أهلاً بيك يا {name}
-
-🎬 بوت تحميل TikTok
-
-• بدون علامة مائية 🔥  
-• اسم الفيديو الحقيقي 📂  
-• صوت بنفس الاسم 🎧  
-• ذكاء اختيار السيرفر 🧠  
-
-💙 برعاية إياد
-"""
-
-    keyboard = [
-        [InlineKeyboardButton("🎬 فيديو", callback_data="video"),
-         InlineKeyboardButton("🎧 صوت", callback_data="audio")],
-        [InlineKeyboardButton("📊 Stats", callback_data="stats")]
-    ]
-
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-
-# -------- CANCEL --------
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_mode.pop(update.effective_user.id, None)
-    await update.message.reply_text("❌ تم الإلغاء")
-
-
-# -------- STATS --------
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"""
-📊 إحصائيات:
-
-👥 المستخدمين: {len(users)}
-📥 التحميلات: {downloads_count}
-""")
+    await update.message.reply_text(
+        "👋 أهلاً بيك\nاختار نوع التحميل 👇",
+        reply_markup=main_menu()
+    )
 
 
 # -------- BUTTONS --------
@@ -211,19 +174,21 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    user_id = q.from_user.id
+
     if q.data == "video":
-        user_mode[q.from_user.id] = "video"
-        await q.edit_message_text("📎 ابعت رابط TikTok")
+        user_mode[user_id] = "video"
+        await q.message.reply_text("📎 ابعت رابط TikTok", reply_markup=main_menu())
 
     elif q.data == "audio":
-        user_mode[q.from_user.id] = "audio"
-        await q.edit_message_text("📎 ابعت رابط TikTok")
+        user_mode[user_id] = "audio"
+        await q.message.reply_text("📎 ابعت رابط TikTok", reply_markup=main_menu())
 
     elif q.data == "stats":
-        await q.edit_message_text(f"""
-👥 المستخدمين: {len(users)}
-📥 التحميلات: {downloads_count}
-""")
+        await q.message.reply_text(
+            f"👥 المستخدمين: {len(users)}\n📥 التحميلات: {downloads_count}",
+            reply_markup=main_menu()
+        )
 
 
 # -------- HANDLE --------
@@ -239,20 +204,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_file = download_tiktok(url)
 
         if not video_file:
-            raise Exception("fail")
+            raise Exception()
 
         downloads_count += 1
 
         if user_mode.get(user_id) == "audio":
-            await msg.edit_text("🎧 جاري استخراج الصوت...")
 
+            await msg.edit_text("🎧 جاري استخراج الصوت...")
             audio_file = convert_to_mp3(video_file)
 
             if not audio_file:
-                await msg.edit_text("❌ مشكلة في الصوت (ffmpeg)")
+                await msg.edit_text("❌ مشكلة في الصوت")
                 return
 
-            await msg.edit_text("📤 جاري إرسال الصوت...")
+            await msg.edit_text("📤 إرسال الصوت...")
 
             with open(audio_file, "rb") as f:
                 await update.message.reply_audio(
@@ -263,7 +228,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(audio_file)
 
         else:
-            await msg.edit_text("📤 جاري إرسال الفيديو...")
+            await msg.edit_text("📤 إرسال الفيديو...")
 
             with open(video_file, "rb") as f:
                 await update.message.reply_video(f)
@@ -272,8 +237,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await msg.edit_text("✅ تم التحميل بنجاح")
 
-    except Exception as e:
-        print(e)
+        # 👇 رجوع المنيو
+        await update.message.reply_text("اختار تاني 👇", reply_markup=main_menu())
+
+    except:
         await msg.edit_text("❌ فشل التحميل")
 
 
@@ -281,7 +248,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_commands(app):
     await app.bot.set_my_commands([
         BotCommand("start", "تشغيل"),
-        BotCommand("cancel", "إلغاء"),
         BotCommand("stats", "إحصائيات"),
     ])
 
@@ -291,9 +257,6 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CommandHandler("stats", stats))
-
     app.add_handler(CallbackQueryHandler(buttons))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
